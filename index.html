@@ -48,11 +48,15 @@
     loop="true"
     crossOrigin="anonymous"
   ></video>
+
+  <button id="startButton">Click to Start Video</button>
     
     <script type="module">
       import * as THREE from 'three';
       console.log({THREE})
       // Sepinaco Code ===============================================================
+      init(); // Se ejecuta justo arriba
+      function init() {
       const modelViewer = document.querySelector('model-viewer');
       modelViewer.addEventListener('load', () => {
         console.log({modelViewer});
@@ -67,7 +71,20 @@
         // console.log({onChange:onChange});
 
         // Symbol(model)
-   
+
+        const startButton = document.getElementById('startButton');
+        startButton.addEventListener('click', function() {
+          initScene(scene);
+          startButton.style.display = 'none'; // Oculta el botón
+        });
+
+      });
+
+      function initScene(scene) {
+
+        // Poner background color black
+        console.log("JODEEE",{tusmuestros:scene})
+        scene.background = new THREE.Color(0x000000); // Negro
 
         // // Crear una cubo simple y añadirla a la escena
         const geometry = new THREE.BoxGeometry();
@@ -98,8 +115,7 @@
           requestAnimationFrame(animateSomething);
         }
         requestAnimationFrame(animateSomething);
-
-      });
+      }
 
       // Search video
       function createVideoPoints(scene, id_video) {
@@ -166,6 +182,7 @@
 
         }
       }
+    }
 
         class VideoPointShader extends THREE.ShaderMaterial {
   constructor() {
