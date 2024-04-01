@@ -19,6 +19,9 @@
       <div id="ar-prompt">
           <img src="ar_hand_prompt.png">
       </div>
+      <!-- Sepinaco code -->
+      <!-- <div id="lazy-load-poster" slot="poster"></div>
+      <div id="button-load" slot="poster">Load 3D Model</div> -->
     </model-viewer>  
     <script src="script.js"></script>
     <!-- Loads <model-viewer> for browsers: -->
@@ -36,6 +39,16 @@
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer/dist/model-viewer-module.min.js"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer-effects/dist/model-viewer-effects.min.js"></script>
 
+    <video
+    id="video"
+    src="mcpi.mp4"
+    controls="true"
+    autoPlay="true"
+    playsInline="true"
+    loop="true"
+    crossOrigin="anonymous"
+  ></video>
+    
     <script type="module">
       import * as THREE from 'three';
       console.log({THREE})
@@ -43,12 +56,20 @@
       const modelViewer = document.querySelector('model-viewer');
       modelViewer.addEventListener('load', () => {
         console.log({modelViewer});
-        console.log({window})
-        // const scene = modelViewer.model;
+        console.log({modelViewerAttributes: Object.getOwnPropertySymbols(modelViewer)})
+
+        // Symbol(scene)
         const scene = modelViewer[Object.getOwnPropertySymbols(modelViewer).find(e => e.description === 'scene')]
-        // // Ahora puedes manipular la escena o agregar elementos adicionales
         console.log({scene:scene});
-        // // Crear una malla simple y añadirla a la escena
+
+        // Symbol(onChange)
+        // const onChange = modelViewer[Object.getOwnPropertySymbols(modelViewer).find(e => e.description === 'onChange')]
+        // console.log({onChange:onChange});
+
+        // Symbol(model)
+   
+
+        // // Crear una cubo simple y añadirla a la escena
         const geometry = new THREE.BoxGeometry();
         const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
         const cube = new THREE.Mesh(geometry, material);
@@ -56,8 +77,373 @@
         console.log({cube})
 
         // Añadir la malla a la escena de model-viewer
-        scene.children[0].add(cube);  
+        const modelMesh = scene.children[0];
+        modelMesh.add(cube);
+
+        // TODO: Crear VideoPoints
+        const points = createVideoPoints(modelMesh, "video");
+        console.log("POINTS:",{points});
+
+        const video = document.getElementById("video");
+        const analyser = new Analyser(video);
+        console.log({analyser});
+
+        function animateSomething() {
+          // Actualizar algo en la pantalla
+          if(points) {
+            points.material.uniforms.bass.value = analyser.getUpdateLowerMax();
+          }
+
+          // Llamar a requestAnimationFrame otra vez para continuar la animación
+          requestAnimationFrame(animateSomething);
+        }
+        requestAnimationFrame(animateSomething);
+
       });
+
+      // Search video
+      function createVideoPoints(scene, id_video) {
+          const videoEl = document.getElementById(id_video);
+          if (videoEl && videoEl.videoWidth !== 0 && videoEl.videoHeight !== 0) {
+            return createVideoPoints2(scene,videoEl);
+          }
+      }
+
+      // Create VideoPoints
+      function createVideoPoints2(scene, video) {
+        console.log("OYE EL VIDEO!",{video});
+        if (video) {
+          // Define Geometry
+          const geometry = new THREE.BufferGeometry();
+          const positions = [];
+          const uvs = [];
+
+          const videoWidth = video.videoWidth;
+          const videoHeight = video.videoHeight;
+
+          for (let y = 0, height = videoHeight; y < height; y += 1) {
+            for (let x = 0, width = videoWidth; x < width; x += 1) {
+              const vertex = new THREE.Vector3(
+                x - videoWidth / 2,
+                -y + videoHeight / 2,
+                0
+              );
+              positions.push(vertex.x, vertex.y, vertex.z);
+              uvs.push(x / videoWidth, y / videoHeight);
+            }
+          }
+          console.log("video height: " + videoHeight);
+          console.log("video width: " + videoWidth);
+
+          geometry.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(positions, 3)
+          );
+          geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+
+          // Define Material
+          const material = new VideoPointShader();
+          material.uniforms.iChannel0.value = new THREE.VideoTexture(video);
+
+          // Define Points
+          const particles = new THREE.Points(geometry, material);
+          particles.rotation.x += Math.PI;
+
+          particles.position.set(0,0,0);
+
+          // Temporal
+          // particles.position.z += -200.0;
+          // particles.scale.set(0.5,0.5,0.5);
+
+          scene.add(particles);
+          // setPoints((v) => particles);
+
+
+          // Esto lo hacemos para acceder al videoPoints en cualquier parte del codigo (por ejemplo para cambiar atributos del shader como el tamano de los puntos)
+          window.videoPoints = particles;
+
+          return particles;
+
+        }
+      }
+
+        class VideoPointShader extends THREE.ShaderMaterial {
+  constructor() {
+    super({
+      uniforms: {
+        iTime: { type: "f", value: 0 },
+        iResolution: { value: new THREE.Vector3(1, 1, 1) },
+
+        bass: { type: "f", value: 0.0 },
+        mid: { type: "f", value: 0.0 },
+        treble: { type: "f", value: 0.0 },
+
+        pointSize: { type: "f", value: 1.5 },
+
+        amplitudeDistance: { type: "f", value: 1.0 },
+
+        colorInput: { value: new THREE.Vector3(0, 0, 0) },
+
+        iChannel0: { type: "t", value: undefined }, // THREE.Texture
+      },
+      vertexShader: `
+      varying vec2 vUv;
+
+      uniform float iTime;
+      uniform sampler2D iChannel0;
+  
+      uniform float bass;
+      uniform float mid;
+      uniform float treble;
+
+      uniform float pointSize;
+
+      uniform float amplitudeDistance;
+  
+  
+          void main() {
+              vUv = uv;
+  
+              vec4 textureVideo = texture2D( iChannel0, vec2( vUv.x, vUv.y) );
+              float gray = (textureVideo.r + textureVideo.g + textureVideo.b) / 3.0;
+              float threshold = 300.0;
+              vec3 pos = position;
+  
+              float r = bass + 0.5;
+              float g = treble;
+              float b = mid;
+              float distance = 400.0;
+              float distance2 = 300.0;
+              float distance3 = 100.0;
+  
+              if(gray < 0.1){
+                  pos.z = - gray * ( bass * 1.0) ;
+              } else if (gray < 0.3) {
+                  pos.z = - gray * ( bass * distance) ;
+              } else if(gray < 0.4) {
+                  pos.z = - gray * bass * distance2;
+                  // pos.z = -1000.0;
+              } else if(gray < 0.6) {
+                  pos.z = - gray * bass * distance3;
+              } else if(gray < 0.8) {
+                  pos.z = - gray * bass * distance2;
+              }
+  
+              // if(gray < 0.3){
+              //     pos.z = - gray * r * bass * distance;
+              // } else if(gray < 0.6) {
+              //     pos.z = gray * r * bass * distance2;
+              // } else {
+              //     pos.z = gray * bass * distance3;
+              // }
+              
+              pos.z += gray * bass * (amplitudeDistance * -1.0);
+  
+  
+              gl_PointSize = pointSize ;
+  
+              gl_Position = projectionMatrix * modelViewMatrix * vec4( pos, 1.0 );
+            }
+        `,
+      fragmentShader: `
+
+      #include <common>
+
+      varying vec2 vUv;
+  
+      uniform vec3 iResolution;
+      uniform float iTime;
+  
+      uniform float bass;
+      uniform float mid;
+      uniform float treble;
+      uniform sampler2D iChannel0;
+  
+      uniform vec3 colorInput;
+  
+      vec3 colorA = vec3(0.3,0.0,0.0);
+      vec3 colorB = vec3(1.0,0.0,0.0);
+  
+      void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+          
+          vec2 uv = fragCoord.xy / iResolution.xy;
+          uv.x *= iResolution.x / iResolution.y;
+  
+          
+          //vec3 color = mix(colorA,colorB,bass+0.3);
+  
+          //vec4 textureVideo = texture2D( iChannel0, vec2( vUv.x, vUv.y) );
+          //float gray = (textureVideo.r + textureVideo.g + textureVideo.b) / 3.0;
+          //vec3 color = textureVideo.rgb;                        
+          //vec3 color_red = vec3(bass+gray,0.0,0.0);
+          //color = ( textureVideo.rgb  ) * vec3(bass + 0.5 , bass + 0.5 , bass + 0.5 ) * 1.0;
+          //float isColor = colorInput.r + colorInput.g + colorInput.b;
+          //if ( isColor  != 0.0 ) {
+          //    color = vec3( colorInput.r * (bass + gray), colorInput.g * (bass + gray), colorInput.b * (bass + gray)  );
+          //    color = vec3(1.0,0.0,0.0);
+          //}
+          //color = vec3( textureVideo.r - 0.1, textureVideo.g - 0.1, textureVideo.b - 0.1 ) + vec3( bass * 0.2, bass * 0.2, bass * 0.2 );
+  
+          vec4 textureVideo = texture2D( iChannel0, vec2( vUv.x, vUv.y) );
+          vec3 color = textureVideo.rgb;
+          //color.r += bass - 0.6 ;
+          //color.g += bass - 0.6;
+          //color.b += bass - 0.6;
+          fragColor = vec4(color, 1.0 );
+  
+  
+      }
+      void main() {
+          mainImage(gl_FragColor, vUv * iResolution.xy);
+      }
+    `,
+    });
+  }
+
+  get iTime() {
+    return this.uniforms.iTime.value;
+  }
+  set iTime(v) {
+    this.uniforms.iTime.value = v;
+  }
+
+  get iResolution() {
+    return this.uniforms.iResolution.value;
+  }
+  set iResolution(v) {
+    return (this.uniforms.iResolution.value = v);
+  }
+
+  get bass() {
+    return this.uniforms.bass.value;
+  }
+  set bass(v) {
+    return (this.uniforms.bass.value = v);
+  }
+
+  get mid() {
+    return this.uniforms.mid.value;
+  }
+  set mid(v) {
+    return (this.uniforms.mid.value = v);
+  }
+
+  get treble() {
+    return this.uniforms.treble.value;
+  }
+  set treble(v) {
+    return (this.uniforms.treble.value = v);
+  }
+
+  get pointSize() {
+    return this.uniforms.pointSize.value;
+  }
+  set pointSize(v) {
+    return (this.uniforms.pointSize.value = v);
+  }
+  get colorInput() {
+    return this.uniforms.colorInput.value;
+  }
+  set colorInput(v) {
+    return (this.uniforms.colorInput.value = v);
+  }
+
+  get iChannel0() {
+    return this.uniforms.iChannel0.value;
+  }
+  set iChannel0(v) {
+    return (this.uniforms.iChannel0.value = v);
+  }
+}
+
+// Ahora el Analyser.js
+
+let context;
+let src;
+let analyser;
+function createMedia(audio) {
+    if(window.contextAnalyser) {
+        context = window.contextAnalyser;
+        src = window.srcAnalyser;
+        analyser = window.analyser;
+    } else {
+        context = new AudioContext();
+        src = context.createMediaElementSource(audio);
+        analyser = context.createAnalyser();
+        src.connect(analyser);
+        analyser.connect(context.destination);
+
+        window.contextAnalyser = context;
+        window.srcAnalyser = src;
+        window.analyser = analyser;
+    }
+}
+
+
+// fftSize = 512 || 2048 || potenciaDe2
+export default class Analyser {
+
+    constructor(audio, fftSize = 2048) {
+
+        if ( audio ) {
+            // const context = new AudioContext();
+            createMedia(audio);
+            analyser.fftSize = fftSize;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+        
+            this.fftSize = fftSize;
+            this.bufferLength = bufferLength;
+            this.context = context;
+            this.analyser = analyser;
+            this.dataArray = dataArray;
+            this.dataTexture = undefined;
+        } else {
+            console.error('No se ha podido crear el Analyser');
+        }
+    }
+
+    disconnect() {
+        // this.analyser.disconnect();
+    }
+
+    getDataTexture() {
+        if(!this.dataTexture) {
+            const format = THREE.RedFormat;
+            this.dataTexture = new THREE.DataTexture( this.dataArray, this.bufferLength, 1, format )
+        }
+        return this.dataTexture;
+    }
+
+    update() {
+        if (this.analyser && this.dataArray) this.analyser.getByteFrequencyData(this.dataArray);
+    }
+
+    getLowerMax() {
+        const lowerHalfArray = this.getLowerHalfArray();
+        return Math.max(...this.getLowerHalfArray()) / lowerHalfArray.length;
+    }
+
+    getUpdateLowerMax() {
+        this.update();
+        return this.getLowerMax();
+    }
+
+    getLowerHalfArray() {
+        const dataArray = this.dataArray;
+        if (dataArray) return dataArray.slice(0, (dataArray.length/2) - 1);
+        else           return [0.0];
+    }
+    
+    getUpperHalfArray() {
+        const dataArray = this.dataArray;
+        if (dataArray) return dataArray.slice((dataArray.length/2) - 1, dataArray.length - 1);
+        else           return [0.0];
+    }
+}
+
+
+
 
     </script>
 
