@@ -49,11 +49,21 @@
     crossOrigin="anonymous"
   ></video>
 
+  <!-- TODO: Crear los componentes videopoints universales para usarlo en proyecto lit-element-starter-js
+  AKA: Crear componente web threejs videopoints aparte de este hack plugin model-viewer videopoints -->
+
+   <!-- Comprobar si en shopify puedo modificarlo de tal manera que en cada pdp
+   aparezca el producto 3d con mi escena customizada -->
+
   <button id="startButton">Click to Start Video</button>
     
     <script type="module">
       import * as THREE from 'three';
       console.log({THREE})
+      // Con esto podremos acceder a THREE en los distintos ficheros js cuando los separe
+      // Pondremos al inicio: const THREE = window.THREE;
+      // Y eso sustituira al tipico: import * as THREE from 'three'
+      window.THREE = THREE;
       // Sepinaco Code ===============================================================
       init(); // Se ejecuta justo arriba
       function init() {
